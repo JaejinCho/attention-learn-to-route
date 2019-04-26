@@ -54,7 +54,7 @@ def run(opts):
         'attention': AttentionModel,
         'pointer': PointerNetwork
     }.get(opts.model, None)
-    assert model_class is not None, "Unknown model: {}".format(model_class)
+    assert model_class is not None, "Unknown model: {}".format(opts.model)
     model = model_class(
         opts.embedding_dim,
         opts.hidden_dim,

@@ -89,14 +89,14 @@ class AttentionModel(nn.Module):
 
             # Special embedding projection for depot node
             self.init_embed_depot = nn.Linear(2, embedding_dim)
-            
+
             if self.is_vrp and self.allow_partial:  # Need to include the demand if split delivery allowed
                 self.project_node_step = nn.Linear(1, 3 * embedding_dim, bias=False)
         else:  # TSP
             assert problem.NAME == "tsp", "Unsupported problem: {}".format(problem.NAME)
             step_context_dim = 2 * embedding_dim  # Embedding of first and last node
             node_dim = 2  # x, y
-            
+
             # Learned input symbols for first action
             self.W_placeholder = nn.Parameter(torch.Tensor(2 * embedding_dim))
             self.W_placeholder.data.uniform_(-1, 1)  # Placeholder should be in range of activations
@@ -300,13 +300,19 @@ class AttentionModel(nn.Module):
                 -1)).data.any(), "Decode greedy: infeasible action has maximum probability"
 
         elif self.decode_type == "sampling":
-            selected = probs.multinomial(1).squeeze(1)
+            if torch.sum(mask) != 0:
+                selected = probs.multinomial(1).squeeze(1)
+            else: # This is first step in decoding (make a model not to depend on choosing a starting city)
+                selected = torch.randint(probs.size(1),(probs.size(0),)).to(probs.device).long()
 
             # Check if sampling went OK, can go wrong due to bug on GPU
             # See https://discuss.pytorch.org/t/bad-behavior-of-multinomial-function/10232
             while mask.gather(1, selected.unsqueeze(-1)).data.any():
                 print('Sampled bad values, resampling!')
-                selected = probs.multinomial(1).squeeze(1)
+                if torch.sum(mask) != 0:
+                    selected = probs.multinomial(1).squeeze(1)
+                else: # This is first step in decoding (make a model not to depend on choosing a starting city)
+                    selected = torch.randint(probs.size(1),(probs.size(0),)).to(probs.device).long()
 
         else:
             assert False, "Unknown decode type"
@@ -369,7 +375,7 @@ class AttentionModel(nn.Module):
     def _get_parallel_step_context(self, embeddings, state, from_depot=False):
         """
         Returns the context per step, optionally for multiple steps at once (for efficient evaluation of the model)
-        
+
         :param embeddings: (batch_size, graph_size, embed_dim)
         :param prev_a: (batch_size, num_steps)
         :param first_a: Only used when num_steps = 1, action of first step or None if first step
@@ -425,7 +431,7 @@ class AttentionModel(nn.Module):
                 -1
             )
         else:  # TSP
-        
+
             if num_steps == 1:  # We need to special case if we have only 1 step, may be the first or not
                 if state.i.item() == 0:
                     # First and only step, ignore prev_a (this is a placeholder)
