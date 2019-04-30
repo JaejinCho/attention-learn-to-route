@@ -295,7 +295,10 @@ class AttentionModel(nn.Module):
         assert (probs == probs).all(), "Probs should not contain any nans"
 
         if self.decode_type == "greedy":
-            _, selected = probs.max(1)
+            if torch.sum(mask) != 0:
+                _, selected = probs.max(1)
+            else: # This is first step in decoding (make a model not to depend on choosing a starting city)
+                selected = torch.randint(probs.size(1),(probs.size(0),)).to(probs.device).long()
             assert not mask.gather(1, selected.unsqueeze(
                 -1)).data.any(), "Decode greedy: infeasible action has maximum probability"
 

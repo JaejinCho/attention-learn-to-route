@@ -10,3 +10,4 @@ __pycache__/
 *.tc_backward.*
 *.log
 *.bak
+list_run.sh
