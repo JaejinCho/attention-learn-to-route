@@ -89,14 +89,14 @@ class AttentionModel(nn.Module):
 
             # Special embedding projection for depot node
             self.init_embed_depot = nn.Linear(2, embedding_dim)
-            
+
             if self.is_vrp and self.allow_partial:  # Need to include the demand if split delivery allowed
                 self.project_node_step = nn.Linear(1, 3 * embedding_dim, bias=False)
         else:  # TSP
             assert problem.NAME == "tsp", "Unsupported problem: {}".format(problem.NAME)
             step_context_dim = 2 * embedding_dim  # Embedding of first and last node
             node_dim = 2  # x, y
-            
+
             # Learned input symbols for first action
             self.W_placeholder = nn.Parameter(torch.Tensor(2 * embedding_dim))
             self.W_placeholder.data.uniform_(-1, 1)  # Placeholder should be in range of activations
@@ -276,7 +276,7 @@ class AttentionModel(nn.Module):
         # Collected lists, return Tensor
         return torch.stack(outputs, 1), torch.stack(sequences, 1)
 
-    def sample_many(self, input, batch_rep=1, iter_rep=1):
+    def sample_many(self, input, batch_rep=1, iter_rep=1, opts=None):
         """
         :param input: (batch_size, graph_size, node_dim) input node features
         :return:
@@ -287,11 +287,12 @@ class AttentionModel(nn.Module):
             lambda input: self._inner(*input),  # Need to unpack tuple into arguments
             lambda input, pi: self.problem.get_costs(input[0], pi),  # Don't need embeddings as input to get_costs
             (input, self.embedder(self._init_embed(input))[0]),  # Pack input with embeddings (additional input)
-            batch_rep, iter_rep
+            batch_rep, iter_rep, opts
         )
 
     def _select_node(self, probs, mask):
 
+        #import ipdb; ipdb.set_trace() # BREAKPOINT
         assert (probs == probs).all(), "Probs should not contain any nans"
 
         if self.decode_type == "greedy":
@@ -369,7 +370,7 @@ class AttentionModel(nn.Module):
     def _get_parallel_step_context(self, embeddings, state, from_depot=False):
         """
         Returns the context per step, optionally for multiple steps at once (for efficient evaluation of the model)
-        
+
         :param embeddings: (batch_size, graph_size, embed_dim)
         :param prev_a: (batch_size, num_steps)
         :param first_a: Only used when num_steps = 1, action of first step or None if first step
@@ -425,7 +426,7 @@ class AttentionModel(nn.Module):
                 -1
             )
         else:  # TSP
-        
+
             if num_steps == 1:  # We need to special case if we have only 1 step, may be the first or not
                 if state.i.item() == 0:
                     # First and only step, ignore prev_a (this is a placeholder)

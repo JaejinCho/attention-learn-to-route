@@ -176,17 +176,24 @@ def do_batch_rep(v, n):
     return v[None, ...].expand(n, *v.size()).contiguous().view(-1, *v.size()[1:])
 
 
-def sample_many(inner_func, get_cost_func, input, batch_rep=1, iter_rep=1):
+def sample_many(inner_func, get_cost_func, input, batch_rep=1, iter_rep=1, opts=None):
     """
     :param input: (batch_size, graph_size, node_dim) input node features
     :return:
     """
+    #import ipdb; ipdb.set_trace() # BREAKPOINT
     input = do_batch_rep(input, batch_rep)
 
     costs = []
     pis = []
     for i in range(iter_rep):
         _log_p, pi = inner_func(input)
+        if opts.decode_strategy == 'greedy':
+            log_p_seq_best = torch.gather(_log_p,2, pi.unsqueeze(2)).squeeze()
+            log_p_best = torch.sum(log_p_seq_best,dim=1)
+        else:
+            # TODO(JJ): Need to implement for sample method
+            log_p_best =None
         # pi.view(-1, batch_rep, pi.size(-1))
         cost, mask = get_cost_func(input, pi)
 
@@ -206,4 +213,4 @@ def sample_many(inner_func, get_cost_func, input, batch_rep=1, iter_rep=1):
     # (batch_size, minlength)
     minpis = pis[torch.arange(pis.size(0), out=argmincosts.new()), argmincosts]
 
-    return minpis, mincosts
+    return minpis, mincosts, log_p_best

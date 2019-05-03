@@ -72,7 +72,7 @@ def eval_dataset(dataset_path, width, softmax_temp, opts):
     # This is parallelism, even if we use multiprocessing (we report as if we did not use multiprocessing, e.g. 1 GPU)
     parallelism = opts.eval_batch_size
 
-    costs, tours, durations = zip(*results)  # Not really costs since they should be negative
+    costs, tours, durations, log_p = zip(*results)  # Not really costs since they should be negative
 
     print("Average cost: {} +- {}".format(np.mean(costs), 2 * np.std(costs) / np.sqrt(len(costs))))
     print("Average serial duration: {} +- {}".format(
@@ -86,12 +86,20 @@ def eval_dataset(dataset_path, width, softmax_temp, opts):
         results_dir = os.path.join(opts.results_dir, model.problem.NAME, dataset_basename)
         os.makedirs(results_dir, exist_ok=True)
 
-        out_file = os.path.join(results_dir, "{}-{}-{}{}-t{}-{}-{}{}".format(
-            dataset_basename, model_name,
-            opts.decode_strategy,
-            width if opts.decode_strategy != 'greedy' else '',
-            softmax_temp, opts.offset, opts.offset + len(costs), ext
-        ))
+        if opts.decode_strategy == 'greedy':
+            out_file = os.path.join(results_dir, "{}-{}-{}{}-t{}-{}-{}{}{}".format(
+                dataset_basename, model_name,
+                opts.decode_strategy,
+                width if opts.decode_strategy != 'greedy' else '',
+                softmax_temp, opts.offset, opts.offset + len(costs), '_ConfMeasure',ext
+            ))
+        else:
+            out_file = os.path.join(results_dir, "{}-{}-{}{}-t{}-{}-{}{}".format(
+                dataset_basename, model_name,
+                opts.decode_strategy,
+                width if opts.decode_strategy != 'greedy' else '',
+                softmax_temp, opts.offset, opts.offset + len(costs), ext
+            ))
     else:
         out_file = opts.o
 
@@ -117,6 +125,7 @@ def _eval_dataset(model, dataset, width, softmax_temp, opts, device):
     results = []
     for batch in tqdm(dataloader, disable=opts.no_progress_bar):
         batch = move_to(batch, device)
+        #import ipdb; ipdb.set_trace() # BREAKPOINT
 
         start = time.time()
         with torch.no_grad():
@@ -137,12 +146,14 @@ def _eval_dataset(model, dataset, width, softmax_temp, opts, device):
                     iter_rep = 1
                 assert batch_rep > 0
                 # This returns (batch_size, iter_rep shape)
-                sequences, costs = model.sample_many(batch, batch_rep=batch_rep, iter_rep=iter_rep)
+                #import ipdb; ipdb.set_trace() # BREAKPOINT
+                sequences, costs, log_p_best = model.sample_many(batch, batch_rep=batch_rep, iter_rep=iter_rep, opts=opts)
                 batch_size = len(costs)
                 ids = torch.arange(batch_size, dtype=torch.int64, device=costs.device)
             else:
                 assert opts.decode_strategy == 'bs'
 
+                #import ipdb; ipdb.set_trace() # BREAKPOINT
                 cum_log_p, sequences, costs, ids, batch_size = model.beam_search(
                     batch, beam_size=width,
                     compress_mask=opts.compress_mask,
@@ -159,7 +170,8 @@ def _eval_dataset(model, dataset, width, softmax_temp, opts, device):
                 batch_size
             )
         duration = time.time() - start
-        for seq, cost in zip(sequences, costs):
+        #import ipdb; ipdb.set_trace() # BREAKPOINT
+        for seq, cost, log_p in zip(sequences, costs, log_p_best.tolist()):
             if model.problem.NAME == "tsp":
                 seq = seq.tolist()  # No need to trim as all are same length
             elif model.problem.NAME in ("cvrp", "sdvrp"):
@@ -169,7 +181,7 @@ def _eval_dataset(model, dataset, width, softmax_temp, opts, device):
             else:
                 assert False, "Unkown problem: {}".format(model.problem.NAME)
             # Note VRP only
-            results.append((cost, seq, duration))
+            results.append((cost, seq, duration, log_p))
 
     return results
 

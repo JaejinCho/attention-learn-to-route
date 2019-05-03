@@ -9,3 +9,7 @@ __pycache__/
 *.tc_backward.*
 *.log
 *.bak
+Oname*
+name*
+*.png
+*.pkl
